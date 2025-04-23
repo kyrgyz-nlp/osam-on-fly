@@ -126,3 +126,91 @@ This method deploys the app persistently using the `fly.toml` configuration. It'
     *   Directly within the `osam` project (ideal).
     *   As middleware configured via this repository's setup (e.g., modifying the `CMD` or adding a proxy).
     *   Leveraging Fly.io platform features if suitable for the use case (e.g., private network access).
+
+## Security: API Key Authentication
+
+This deployment now includes a simple API key authentication mechanism to protect the `/api/generate` endpoint.
+
+The `main.py` script acts as a wrapper around the original `osam._server:app`. It requires an API key to be sent in the `X-API-Key` header for all incoming requests.
+
+### Setting the API Key
+
+How you set the required `API_KEY` depends on your environment:
+
+*   **Fly.io Deployment:**
+    Use the `fly secrets set` command. This is the **recommended method for production**. Secrets set via `fly secrets` take precedence over environment variables defined elsewhere (like `.env`).
+    ```bash
+    fly secrets set API_KEY=YOUR_SUPER_SECRET_KEY -a your-osam-app-name
+    ```
+    Replace `YOUR_SUPER_SECRET_KEY` with a strong, unique key and `your-osam-app-name` with your app's name.
+
+*   **Local Development (outside Fly.io):**
+
+    **Design Decision:** We do **not** copy the `.env` file directly into the Docker image during the build process (`Dockerfile` has no `COPY .env ...`). Baking secrets like API keys directly into images is insecure, as the image might be shared or stored in registries where the secrets could be exposed.
+
+    Instead, we use standard Docker methods to inject these settings when running the container locally:
+
+    1.  **Create/Update `.env` file:** If it doesn't exist, copy the example: `cp .env.example .env`. Edit the `.env` file to set your desired `API_KEY` and optionally `APP_ENV=development`.
+        ```dotenv
+        # .env file contents
+        API_KEY=your_local_key_here
+        APP_ENV=development
+        ```
+    2.  **Important:** Ensure `.env` is listed in your `.gitignore` file to prevent accidentally committing secrets.
+    3.  **Run the container with `--env-file`:** When you run the container locally using `docker run`, use the `--env-file` flag to load the variables from your `.env` file directly into the container's environment:
+        ```bash
+        # Assuming you have built the image (e.g., docker build -t my-osam-app .)
+        docker run --rm -p 11368:11368 --env-file ./.env my-osam-app
+        ```
+        The `main.py` script within the container will then read these environment variables using `os.environ.get()`. 
+
+        **Role of `load_dotenv()` in `main.py`:** The `load_dotenv()` call present in `main.py` is primarily designed to facilitate running the script *directly* on your host machine (e.g., for quick tests via `python main.py`). In that scenario, it *will* load variables from a `.env` file in the same directory. However, when running inside a Docker container using the `--env-file` method described above, the variables are already injected into the environment *before* the Python script starts, making the `load_dotenv()` call less critical (though harmless).
+
+### Development vs. Production Mode (`APP_ENV`)
+
+By default, the application runs in "production" mode, meaning the `API_KEY` **must** be set (either via `fly secrets` or `.env`), and requests without a valid `X-API-Key` header will be rejected.
+
+For local development, you can optionally set the `APP_ENV` environment variable to `development`:
+
+*   Add `APP_ENV=development` to your `.env` file.
+*   Or set it when running the container: `docker run -e APP_ENV=development ...`
+
+In `development` mode, if the `API_KEY` is *not* set, authentication will be bypassed, and a warning will be printed to the console. This allows easier testing without needing a key configured, but **should not be used in production.**
+
+### Client Usage
+
+Clients interacting with the deployed service must include the API key in the `X-API-Key` header:
+
+```python
+import requests
+
+api_key = "YOUR_API_KEY" # The key you set via fly secrets or .env
+app_url = "https://your-osam-app-name.fly.dev" # Your app's URL
+
+headers = {
+    "X-API-Key": api_key,
+    "Content-Type": "application/json"
+}
+
+data = {
+    "model_id": "sam_vit_b",
+    "image_path": "path/to/your/image.jpg", # Or provide image_base64
+    "prompt": {
+        "points": [[100, 100]], # Example prompt
+        "labels": [1]
+    }
+}
+
+response = requests.post(f"{app_url}/api/generate", headers=headers, json=data)
+
+if response.status_code == 200:
+    result = response.json()
+    print("Success:", result)
+elif response.status_code == 403:
+    print("Authentication Error:", response.json())
+elif response.status_code == 500:
+    print("Server Error (check API Key configuration?):", response.text)
+else:
+    print("Error:", response.status_code, response.text)
+
+```

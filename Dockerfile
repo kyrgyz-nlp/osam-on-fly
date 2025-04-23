@@ -37,7 +37,7 @@ ENV UV_PYTHON=/usr/bin/python3.10
 # Create the virtual environment and install packages
 RUN uv venv /venv --python $UV_PYTHON \
     && . /venv/bin/activate \
-    && UV_PYTHON=/venv/bin/python uv pip install "git+https://github.com/jumasheff/osam.git#egg=osam[serve]"
+    && UV_PYTHON=/venv/bin/python uv pip install "git+https://github.com/jumasheff/osam.git#egg=osam[serve]" python-dotenv
 
 # Stage 3: Final runtime image
 FROM base as runtime
@@ -64,8 +64,11 @@ WORKDIR /app
 # Copy virtual environment from the builder stage
 COPY --from=builder /venv /venv
 
+# Copy the wrapper application code
+COPY main.py /app/
+
 # Expose the server port
 EXPOSE 11368
 
-# Use the virtual environment's Python and run uvicorn directly
-CMD ["/venv/bin/uvicorn", "osam._server:app", "--host", "0.0.0.0", "--port", "11368"]
+# Use the virtual environment's Python and run uvicorn with the wrapper app
+CMD ["/venv/bin/uvicorn", "main:app", "--host", "0.0.0.0", "--port", "11368"]
