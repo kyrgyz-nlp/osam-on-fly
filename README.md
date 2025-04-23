@@ -2,6 +2,9 @@
 
 This document describes how to use the provided `Dockerfile` to build an image for the `osam` application and deploy it to Fly.io as an HTTP service, leveraging GPU instances (like L40S).
 
+    > [!WARNING]
+    > **SECURITY WARNING:** THE `/api/generate` ENDPOINT EXPOSED BY THIS DEPLOYMENT IS **NOT SECURED** BY DEFAULT. ANYONE WITH THE URL CAN SEND REQUESTS TO IT. THIS CAN LEAD TO SIGNIFICANT GPU USAGE AND POTENTIALLY **HIGH COSTS** ON YOUR FLY.IO BILL. YOU ARE RESPONSIBLE FOR SECURING THIS ENDPOINT YOURSELF (E.G., USING AUTHENTICATION MIDDLEWARE, IP RESTRICTIONS, OR FLY.IO FEATURES LIKE PRIVATE NETWORKING IF APPLICABLE). USE AT YOUR OWN RISK.
+
 ## Docker Image
 
 The multi-stage `Dockerfile` creates a container image with the following characteristics:
@@ -9,10 +12,10 @@ The multi-stage `Dockerfile` creates a container image with the following charac
 *   Based on `ubuntu:22.04`.
 *   Installs the NVIDIA apt repository and required CUDA runtime libraries (`libcublas-12-2`, `libcudnn8`) needed by ONNX Runtime for GPU execution. *Note: Drivers are provided by the Fly.io host environment.*
 *   Installs Git, Python 3, and `uv`.
-*   Clones the `osam` repository (default: `https://github.com/wkentaro/osam.git`, configurable via `--build-arg REPO_URL`). It's recommended to clone a specific tag/commit for production builds.
-*   Installs Python dependencies from `pyproject.toml` (including optional `serve` dependencies) into a virtual environment (`/opt/venv`) using `uv pip install --locked`.
+*   **Installs `osam` directly from the [jumasheff/osam fork](https://github.com/jumasheff/osam.git) using `uv pip install "git+https://github.com/jumasheff/osam.git#egg=osam[serve]"`.** This fork includes necessary server components. The `Dockerfile` does *not* clone the repository separately.
+*   Sets up a virtual environment (`/opt/venv`) for dependencies.
 *   **Does NOT set an `ENTRYPOINT`.**
-*   Sets the default `CMD` to run the `uvicorn` server directly, binding to `0.0.0.0:11368`: `["uvicorn", "osam._server:app", "--host", "0.0.0.0", "--port", "11368"]`. This makes the container primarily suitable for running the web service via `fly deploy`.
+*   Sets the default `CMD` to run the `uvicorn` server directly, binding to `0.0.0.0:11368`: `["/venv/bin/uvicorn", "osam._server:app", "--host", "0.0.0.0", "--port", "11368"]`. This makes the container primarily suitable for running the web service via `fly deploy`.
 
 ## Fly.io GPU Deployment (HTTP Service)
 
@@ -32,28 +35,31 @@ Choose a region that offers the GPU type you need (e.g., `ord` for `l40s`).
 
 **Deployment Approach: On-Demand Service via `fly deploy`**
 
-This method deploys the app persistently using the `fly.toml` configuration. It's configured to shut down when idle (`min_machines_running = 0`, `auto_stop_machines = true`) and start automatically when an HTTP request arrives.
+This method deploys the app persistently using the `fly.toml` configuration. It's configured to shut down when idle (`min_machines_running = 0`, `auto_stop_machines = 'stop'`) and start automatically when an HTTP request arrives.
 
 **Steps:**
 
-1.  **Create `fly.toml`:**
-    Ensure you have a `fly.toml` file in your deployment directory (where the `Dockerfile` is). It should look similar to this, adjusted for your application name and desired settings:
+1.  **Prepare `fly.toml`:**
+    Copy the example configuration file:
+    ```bash
+    cp fly.toml.example fly.toml
+    ```
+    *(Note: After copying and editing `fly.toml` with your desired app name and settings, you have two primary ways to create the app on Fly.io if it doesn't exist yet:
+        a) **Run `fly launch`**: It will detect `fly.toml` and ask if you want to use its configuration to create the new app. This is a convenient way to register the app using the settings you've already defined.
+        b) **Run `fly deploy` directly (Step 2 below)**: If the app doesn't exist, `fly deploy` will also create it based on the `fly.toml` file before deploying.
+    Both methods work. Using `fly launch` first makes the initial app creation explicit. Just ensure your `fly.toml` has the correct GPU `[[vm]]` size, `[[mounts]]`, and `[http_service]` settings before proceeding with either `launch` or `deploy`.)*
+
+    Now, edit the `fly.toml` file. Ensure it looks similar to this, adjusted for your application name and desired settings:
 
     ```toml
     # fly.toml
-    app = "chalkanosam" # Your Fly app name
+    app = "your-osam-app-name" # !!! CHANGE THIS to your unique Fly app name !!!
     primary_region = "ord"    # Desired region with GPUs (e.g., ord for l40s)
-
-    [[vm]]
-      size = 'l40s' # Specify the GPU VM size preset (e.g., a10, a100-40gb)
 
     # Define where to build from
     [build]
       dockerfile = "Dockerfile"
-      # Or uncomment below to build from local Dockerfile on deploy:
-      # build-target = "runtime" # Specify the final stage if using multi-stage target
-      # [build.args]
-      #   REPO_URL = "https://github.com/wkentaro/osam.git"
+      # The Dockerfile installs osam directly, no need for build args here normally.
 
     # Define the volume mount for the model cache
     # Fly deploy will automatically create this volume if it doesn't exist
@@ -65,82 +71,56 @@ This method deploys the app persistently using the `fly.toml` configuration. It'
     # Define the HTTP service configuration
     [http_service]
       internal_port = 11368 # Matches the port in Dockerfile CMD
-      force_https = true # Recommended: Enforce HTTPS
-      auto_stop_machines = true # Stop machine when idle
+      # force_https = true # Recommended: Enforce HTTPS (uncomment if needed)
+      auto_stop_machines = 'stop' # Stop machine when idle (uses string value like fly.toml.example)
       auto_start_machines = true # Start machine on new requests
       min_machines_running = 0 # Allow machine to scale to zero
       processes = ["app"] # Uses the default process group run by CMD
+
+    # Define the VM size (GPU type)
+    [[vm]]
+      size = 'l40s' # Specify the GPU VM size preset (e.g., a10, a100-40gb)
     ```
 
-    *   Replace placeholder values (like `app` name) if necessary.
+    *   **Crucially, change the `app` name to something unique.**
     *   Adjust `primary_region`, `vm.size`, `initial_size` as needed.
-    *   This configuration tells Fly.io to build using the local `Dockerfile`, mount a volume for caching, and run an HTTP service that listens internally on `11368`. Because there is no `[processes]` section, Fly uses the `Dockerfile`'s `CMD` to start the service.
+    *   Using `force_https = true` is recommended for production but commented out by default here.
 
 2.  **Deploy the App:**
-    This command creates the app (if it doesn't exist), creates the volume (if it doesn't exist and is defined in `fly.toml`), builds the Docker image, pushes it, and starts the machine(s) based on the config.
+    Run the deployment command from the directory containing your `Dockerfile` and `fly.toml`:
     ```bash
     fly deploy
     ```
+    *Note: If the app specified in `fly.toml` doesn't exist on Fly.io yet, `fly deploy` will automatically create it for you based on this configuration file. It will also create the volume defined in `[[mounts]]` if it doesn't exist.*
 
 3.  **Interact with the Service:**
     Once deployed, your service will be available at `https://<your-app-name>.fly.dev`. You can send POST requests to the `/api/generate` endpoint.
 
     *   **Get App Hostname:**
         ```bash
-        APP_HOSTNAME=$(fly status --app chalkanosam --json | jq -r .Hostname)
+        # Replace 'your-osam-app-name' with the actual app name from your fly.toml
+        APP_NAME="your-osam-app-name"
+        APP_HOSTNAME=$(fly status --app $APP_NAME --json | jq -r .Hostname)
         echo "App available at: https://${APP_HOSTNAME}"
         ```
-    *   **Example `curl` Request (assuming `examples/_images/dogs.jpg` is local):**
-        ```bash
-        curl "https://${APP_HOSTNAME}/api/generate" -X POST \\
-          -H "Content-Type: application/json" \\
-          -d "{\\"model\\": \\"efficientsam\\", \\"image\\": \\"$(cat examples/_images/dogs.jpg | base64)\\"}" \\
-          | jq -r .mask | base64 --decode > fly_mask.png
-        ```
+    *   **Example Python Request:**
+        See the `send_request_example.py` file for a complete example of how to send requests to the API using Python. You'll need to update the `API_ENDPOINT` to point to your Fly.io app URL (`https://<your-app-name>.fly.dev`).
 
     *   **Using `fly ssh console` (for debugging):**
-        You can still SSH into the running machine for debugging:
+        You can SSH into the running machine for debugging:
         ```bash
-        fly ssh console
-        ```
-        However, since there's no `ENTRYPOINT` configured for the `osam` CLI, you need to use the full path to run `osam` commands inside the shell:
-        ```bash
-        # Inside the SSH console
-        /opt/venv/bin/osam --help
-        /opt/venv/bin/osam run sam2:large --image /root/.cache/osam/path/to/image.jpg ...
+        fly ssh console -a <your-app-name>
         ```
 
 ## General Notes
 
 *   **Model Downloads:** The first time you make an API request for a specific model (e.g., `efficientsam`, `sam2:large`), `osam` (via the server) will download it into the `/root/.cache/osam` directory, which resides on your persistent volume. Subsequent requests for the same model will reuse the cached version.
-*   **Cold Starts:** With `auto_stop_machines = true` and `min_machines_running = 0`, the first request after a period of inactivity might take longer as the machine needs to start up.
+*   **Cold Starts:** With `auto_stop_machines = 'stop'` and `min_machines_running = 0`, the first request after a period of inactivity might take longer as the machine needs to start up.
 *   **Error Handling:** Check logs using `fly logs -a <your-app-name>`.
-*   **Memory:** Monitor system RAM and GPU VRAM usage (`fly ssh console` then `top`, `nvidia-smi`). Large models might require larger VM presets (`vm.size` in `fly.toml`). If you encounter CUDA memory allocation errors, you might need to add environment variables. This can be done by adding a `[env]` section to your `fly.toml`:
-    ```toml
-    [env]
-      PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
-    ```
 
-## Alternative: One-off Tasks (`fly machine run`)
+## TODO: Security
 
-While the primary goal is serving, you *could* still run one-off `osam` commands using `fly machine run`. However, because the `Dockerfile` has no `osam` `ENTRYPOINT` defined by default, the command is more complex:
-
-```bash
-# Example: Run sam2:large on a specific image already on the volume
-fly machine run . \\
-  --app chalkanosam \\
-  --region ord \\
-  --gpu-kind l40s \\
-  --vm-size l40s \\
-  --volume osam_cache:/root/.cache/osam \\
-  --env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \\
-  --entrypoint /bin/bash -- /opt/venv/bin/osam run sam2:large \\
-    --image /root/.cache/osam/path/to/your/image.jpg \\
-    --prompt '{\\"texts\\": [\\"your prompt text\\"]}'
-```
-*Note the need to explicitly set `--entrypoint /bin/bash` and provide the full path to the `osam` executable.* This is generally less convenient than the `fly deploy` approach for a persistent service.
-
-## Additional Note
-
-We are using `osam`'s fork in the Dockerfile: `uv pip install "git+https://github.com/jumasheff/osam.git#egg=osam[serve]"`.
-After it gets merged, we can use the package installation instead: `pip install "osam[serve]"`# osam-on-fly
+*   Implement authentication/authorization for the `/api/generate` endpoint. This could potentially be added:
+    *   Directly within the `osam` project (ideal).
+    *   As middleware configured via this repository's setup (e.g., modifying the `CMD` or adding a proxy).
+    *   Leveraging Fly.io platform features if suitable for the use case (e.g., private network access).

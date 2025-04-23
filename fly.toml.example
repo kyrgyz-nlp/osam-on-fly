@@ -1,0 +1,20 @@
+app = 'awesomeosamonfly'
+primary_region = 'ord'
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[[mounts]]
+  source = 'osam_cache'
+  destination = '/root/.cache/osam'
+  initial_size = '5gb'
+
+[http_service]
+  internal_port = 11368
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+[[vm]]
+  size = 'l40s'
