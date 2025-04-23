@@ -173,37 +173,73 @@ In `development` mode, if the `API_KEY` is *not* set, authentication will be byp
 
 ### Client Usage
 
+# See `send_request_example.py` for a complete working example
+
+
 Clients interacting with the deployed service must include the API key in the `X-API-Key` header:
 
 ```python
 import requests
+import base64
+import os
 
-api_key = "YOUR_API_KEY" # The key you set via fly secrets or .env
-app_url = "https://your-osam-app-name.fly.dev" # Your app's URL
+api_key = os.environ.get("API_KEY") # Get key from environment variable
+if not api_key:
+    raise ValueError("osam `API_KEY` environment variable not set.")
+
+# Use your deployed app URL or localhost for local testing
+app_url = "https://your-osam-app-name.fly.dev"
+# Or for local testing: app_url = "http://localhost:11368"
+
+image_path = "examples/_images/dogs.jpg" # Path to your image
 
 headers = {
     "X-API-Key": api_key,
     "Content-Type": "application/json"
 }
 
+# Read image, encode to base64
+try:
+    with open(image_path, "rb") as f:
+        image_bytes = f.read()
+    image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+except FileNotFoundError:
+    print(f"Error: Image file not found at {image_path}")
+    exit()
+except Exception as e:
+    print(f"Error reading or encoding image: {e}")
+    exit()
+
+
 data = {
-    "model_id": "sam_vit_b",
-    "image_path": "path/to/your/image.jpg", # Or provide image_base64
+    "model": "efficientsam", # Or "sam2:tiny", etc.
+    "image": image_base64,
     "prompt": {
-        "points": [[100, 100]], # Example prompt
-        "labels": [1]
+        # Example prompt for dogs.jpg (adjust points as needed)
+        "points": [[1439, 504], [1439, 1289]],
+        "point_labels": [1, 1] # 1 indicates foreground points
     }
 }
 
+print(f"Sending request to {app_url}/api/generate...")
 response = requests.post(f"{app_url}/api/generate", headers=headers, json=data)
 
 if response.status_code == 200:
     result = response.json()
-    print("Success:", result)
+    print("Success! Response keys:", result.keys())
+    # Process the result, e.g., save the mask
 elif response.status_code == 403:
-    print("Authentication Error:", response.json())
+    print("Authentication Error (403):", response.json())
+    print("Ensure the correct API key is set in API_KEY environment variable and matches the server's API_KEY.")
+elif response.status_code == 422:
+     print(f"Validation Error ({response.status_code}): Check your payload.")
+     try:
+         print(response.json())
+     except requests.exceptions.JSONDecodeError:
+         print(response.text)
 elif response.status_code == 500:
-    print("Server Error (check API Key configuration?):", response.text)
+    print("Server Error (500):", response.text)
+    print("Check server logs (`fly logs`) and ensure the API_KEY secret is correctly set on Fly.io.")
 else:
     print("Error:", response.status_code, response.text)
 

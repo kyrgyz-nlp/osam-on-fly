@@ -2,3 +2,4 @@ venv
 response_output.json
 fly.toml
 .env
+mask_from_api.png
