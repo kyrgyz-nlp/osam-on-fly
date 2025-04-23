@@ -1,12 +1,12 @@
 # OSAM Docker Image for Fly.io GPU Deployment
 
-This document describes how to use the provided [`Dockerfile`](./Dockerfile) to build an image for the `osam` application and deploy it to Fly.io as an HTTP service, leveraging GPU instances (like L40S).
+This document describes how to use the provided [`Dockerfile`](./Dockerfile) to build an image for the [`osam`](https://github.com/wkentaro/osam) application and deploy it to [Fly.io](https://fly.io) as an HTTP service, leveraging GPU instances (like L40S).
 
-    > [!IMPORTANT]
-    > **SECURITY:** This deployment now uses **API Key Authentication** (via the `X-API-Key` header) to protect the `/api/generate` endpoint.
-    > **You MUST configure a strong, secret `API_KEY`** (using `fly secrets set API_KEY=...` for Fly.io or the `.env` file for local runs) to prevent unauthorized access.
-    > Failure to secure the endpoint can lead to significant GPU usage and potentially **high costs** on your Fly.io bill.
-    > See the "Security: API Key Authentication" section below for setup details.
+**[!IMPORTANT]
+SECURITY: This deployment now uses API Key Authentication (via the `X-API-Key` header) to protect the `/api/generate` endpoint.
+You MUST configure a strong, secret `API_KEY` (using `fly secrets set API_KEY=...` for Fly.io or the `.env` file for local runs) to prevent unauthorized access.
+Failure to secure the endpoint can lead to significant GPU usage and potentially high costs on your Fly.io bill.
+See the "Security: API Key Authentication" section below for setup details.**
 
 ## Docker Image
 
