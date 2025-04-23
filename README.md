@@ -2,14 +2,11 @@
 
 This document describes how to use the provided `Dockerfile` to build an image for the `osam` application and deploy it to Fly.io as an HTTP service, leveraging GPU instances (like L40S).
 
-    > [!WARNING]
-    > **SECURITY WARNING:** THE `/api/generate` ENDPOINT EXPOSED BY THIS DEPLOYMENT
-    > IS **NOT SECURED** BY DEFAULT. ANYONE WITH THE URL CAN SEND REQUESTS TO IT.
-    > THIS CAN LEAD TO SIGNIFICANT GPU USAGE AND POTENTIALLY **HIGH COSTS** ON YOUR FLY.IO BILL.
-    > YOU ARE RESPONSIBLE FOR SECURING THIS ENDPOINT YOURSELF
-    > (E.G., USING AUTHENTICATION MIDDLEWARE, IP RESTRICTIONS,
-    > OR FLY.IO FEATURES LIKE PRIVATE NETWORKING IF APPLICABLE).
-    > USE AT YOUR OWN RISK.
+    > [!IMPORTANT]
+    > **SECURITY:** This deployment now uses **API Key Authentication** (via the `X-API-Key` header) to protect the `/api/generate` endpoint.
+    > **You MUST configure a strong, secret `API_KEY`** (using `fly secrets set API_KEY=...` for Fly.io or the `.env` file for local runs) to prevent unauthorized access.
+    > Failure to secure the endpoint can lead to significant GPU usage and potentially **high costs** on your Fly.io bill.
+    > See the "Security: API Key Authentication" section below for setup details.
 
 ## Docker Image
 
@@ -122,10 +119,7 @@ This method deploys the app persistently using the `fly.toml` configuration. It'
 
 ## TODO: Security
 
-*   Implement authentication/authorization for the `/api/generate` endpoint. This could potentially be added:
-    *   Directly within the `osam` project (ideal).
-    *   As middleware configured via this repository's setup (e.g., modifying the `CMD` or adding a proxy).
-    *   Leveraging Fly.io platform features if suitable for the use case (e.g., private network access).
+*   Consider proposing the API key security wrapper mechanism implemented here as an enhancement to the upstream `osam` project.
 
 ## Security: API Key Authentication
 
