@@ -25,7 +25,7 @@ The multi-stage [`Dockerfile`](./Dockerfile) creates a container image with the 
 *   A Fly.io account with GPU access enabled for your organization.
 *   [`flyctl`](https://fly.io/docs/hands-on/install-flyctl/) installed and authenticated (`fly auth login`).
 
-**Available GPUs & Regions (as per docs):**
+**Available GPUs & Regions (as per [docs](https://fly.io/docs/gpus/gpu-quickstart/)):**
 
 *   `a10`: `ord`
 *   `l40s`: `ord`
