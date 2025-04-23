@@ -15,7 +15,7 @@ The multi-stage `Dockerfile` creates a container image with the following charac
 *   Based on `ubuntu:22.04`.
 *   Installs the NVIDIA apt repository and required CUDA runtime libraries (`libcublas-12-2`, `libcudnn8`) needed by ONNX Runtime for GPU execution. *Note: Drivers are provided by the Fly.io host environment.*
 *   Installs Git, Python 3, and `uv`.
-*   **Installs `osam` directly from the [jumasheff/osam fork](https://github.com/jumasheff/osam.git) using `uv pip install "git+https://github.com/jumasheff/osam.git#egg=osam[serve]"`.** This fork includes necessary server components. The `Dockerfile` does *not* clone the repository separately.
+*   Installs `osam` directly from the [jumasheff/osam fork](https://github.com/jumasheff/osam.git) using `uv pip install "git+https://github.com/jumasheff/osam.git#egg=osam[serve]"`. This fork includes necessary fixes. The `Dockerfile` does *not* clone the repository separately. When this fork is merged into the main repository, the Dockerfile will be updated to use `pip install osam[serve]` directly.
 *   Sets up a virtual environment (`/venv`) for dependencies.
 *   Sets the default `CMD` to run the `uvicorn` server directly, binding to `0.0.0.0:11368`: `["/venv/bin/uvicorn", "osam._server:app", "--host", "0.0.0.0", "--port", "11368"]`. This makes the container primarily suitable for running the web service via `fly deploy`.
 
