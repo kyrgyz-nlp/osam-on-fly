@@ -13,8 +13,7 @@ The multi-stage `Dockerfile` creates a container image with the following charac
 *   Installs the NVIDIA apt repository and required CUDA runtime libraries (`libcublas-12-2`, `libcudnn8`) needed by ONNX Runtime for GPU execution. *Note: Drivers are provided by the Fly.io host environment.*
 *   Installs Git, Python 3, and `uv`.
 *   **Installs `osam` directly from the [jumasheff/osam fork](https://github.com/jumasheff/osam.git) using `uv pip install "git+https://github.com/jumasheff/osam.git#egg=osam[serve]"`.** This fork includes necessary server components. The `Dockerfile` does *not* clone the repository separately.
-*   Sets up a virtual environment (`/opt/venv`) for dependencies.
-*   **Does NOT set an `ENTRYPOINT`.**
+*   Sets up a virtual environment (`/venv`) for dependencies.
 *   Sets the default `CMD` to run the `uvicorn` server directly, binding to `0.0.0.0:11368`: `["/venv/bin/uvicorn", "osam._server:app", "--host", "0.0.0.0", "--port", "11368"]`. This makes the container primarily suitable for running the web service via `fly deploy`.
 
 ## Fly.io GPU Deployment (HTTP Service)
@@ -44,10 +43,7 @@ This method deploys the app persistently using the `fly.toml` configuration. It'
     ```bash
     cp fly.toml.example fly.toml
     ```
-    *(Note: After copying and editing `fly.toml` with your desired app name and settings, you have two primary ways to create the app on Fly.io if it doesn't exist yet:
-        a) **Run `fly launch`**: It will detect `fly.toml` and ask if you want to use its configuration to create the new app. This is a convenient way to register the app using the settings you've already defined.
-        b) **Run `fly deploy` directly (Step 2 below)**: If the app doesn't exist, `fly deploy` will also create it based on the `fly.toml` file before deploying.
-    Both methods work. Using `fly launch` first makes the initial app creation explicit. Just ensure your `fly.toml` has the correct GPU `[[vm]]` size, `[[mounts]]`, and `[http_service]` settings before proceeding with either `launch` or `deploy`.)*
+    *(Note: Before deploying, you must first create the app on Fly.io if it doesn't exist. You can do this using `fly apps create your-osam-app-name` or by running `fly launch`. `fly launch` will detect `fly.toml` and prompt you to create the app based on its configuration. Ensure your `fly.toml` has the correct GPU `[[vm]]` size, `[[mounts]]`, and `[http_service]` settings before creating the app.)*
 
     Now, edit the `fly.toml` file. Ensure it looks similar to this, adjusted for your application name and desired settings:
 
@@ -91,7 +87,7 @@ This method deploys the app persistently using the `fly.toml` configuration. It'
     ```bash
     fly deploy
     ```
-    *Note: If the app specified in `fly.toml` doesn't exist on Fly.io yet, `fly deploy` will automatically create it for you based on this configuration file. It will also create the volume defined in `[[mounts]]` if it doesn't exist.*
+    *Note: You must have already created the Fly.io app (using `fly apps create` or `fly launch`) before running `fly deploy`. However, `fly deploy` *will* automatically create the volume defined in `[[mounts]]` during the first deployment if it doesn't exist.*
 
 3.  **Interact with the Service:**
     Once deployed, your service will be available at `https://<your-app-name>.fly.dev`. You can send POST requests to the `/api/generate` endpoint.
