@@ -1,6 +1,6 @@
 # OSAM Docker Image for Fly.io GPU Deployment
 
-This document describes how to use the provided `Dockerfile` to build an image for the `osam` application and deploy it to Fly.io as an HTTP service, leveraging GPU instances (like L40S).
+This document describes how to use the provided [`Dockerfile`](./Dockerfile) to build an image for the `osam` application and deploy it to Fly.io as an HTTP service, leveraging GPU instances (like L40S).
 
     > [!IMPORTANT]
     > **SECURITY:** This deployment now uses **API Key Authentication** (via the `X-API-Key` header) to protect the `/api/generate` endpoint.
@@ -10,21 +10,21 @@ This document describes how to use the provided `Dockerfile` to build an image f
 
 ## Docker Image
 
-The multi-stage `Dockerfile` creates a container image with the following characteristics:
+The multi-stage [`Dockerfile`](./Dockerfile) creates a container image with the following characteristics:
 
 *   Based on `ubuntu:22.04`.
 *   Installs the NVIDIA apt repository and required CUDA runtime libraries (`libcublas-12-2`, `libcudnn8`) needed by ONNX Runtime for GPU execution. *Note: Drivers are provided by the Fly.io host environment.*
 *   Installs Git, Python 3, and `uv`.
-*   Installs `osam` directly from the [jumasheff/osam fork](https://github.com/jumasheff/osam.git) using `uv pip install "git+https://github.com/jumasheff/osam.git#egg=osam[serve]"`. This fork includes necessary fixes. The `Dockerfile` does *not* clone the repository separately. When this fork is merged into the main repository, the Dockerfile will be updated to use `pip install osam[serve]` directly.
+*   Installs `osam` directly from the [jumasheff/osam fork](https://github.com/jumasheff/osam.git) using `uv pip install "git+https://github.com/jumasheff/osam.git#egg=osam[serve]"`. This fork includes necessary fixes. The [`Dockerfile`](./Dockerfile) does *not* clone the repository separately. When this fork is merged into the main repository, the Dockerfile will be updated to use `pip install osam[serve]` directly.
 *   Sets up a virtual environment (`/venv`) for dependencies.
-*   Sets the default `CMD` to run the `uvicorn` server directly, binding to `0.0.0.0:11368`: `["/venv/bin/uvicorn", "osam._server:app", "--host", "0.0.0.0", "--port", "11368"]`. This makes the container primarily suitable for running the web service via `fly deploy`.
+*   Sets the default `CMD` to run the `uvicorn` server via the [`main:app`](./main.py) wrapper (which adds API key security), binding to `0.0.0.0:11368`: `["/venv/bin/uvicorn", "main:app", "--host", "0.0.0.0", "--port", "11368"]`. This makes the container primarily suitable for running the web service via `fly deploy`.
 
 ## Fly.io GPU Deployment (HTTP Service)
 
 **Prerequisites:**
 
 *   A Fly.io account with GPU access enabled for your organization.
-*   [flyctl](https://fly.io/docs/hands-on/install-flyctl/) installed and authenticated (`fly auth login`).
+*   [`flyctl`](https://fly.io/docs/hands-on/install-flyctl/) installed and authenticated (`fly auth login`).
 
 **Available GPUs & Regions (as per docs):**
 
@@ -37,18 +37,18 @@ Choose a region that offers the GPU type you need (e.g., `ord` for `l40s`).
 
 **Deployment Approach: On-Demand Service via `fly deploy`**
 
-This method deploys the app persistently using the `fly.toml` configuration. It's configured to shut down when idle (`min_machines_running = 0`, `auto_stop_machines = 'stop'`) and start automatically when an HTTP request arrives.
+This method deploys the app persistently using the [`fly.toml`](./fly.toml.example) configuration. It's configured to shut down when idle (`min_machines_running = 0`, `auto_stop_machines = 'stop'`) and start automatically when an HTTP request arrives.
 
 **Steps:**
 
-1.  **Prepare `fly.toml`:**
+1.  **Prepare [`fly.toml`](./fly.toml):**
     Copy the example configuration file:
     ```bash
     cp fly.toml.example fly.toml
     ```
-    *(Note: Before deploying, you must first create the app on Fly.io if it doesn't exist. You can do this using `fly apps create your-osam-app-name` or by running `fly launch`. `fly launch` will detect `fly.toml` and prompt you to create the app based on its configuration. Ensure your `fly.toml` has the correct GPU `[[vm]]` size, `[[mounts]]`, and `[http_service]` settings before creating the app.)*
+    *(Note: Before deploying, you must first create the app on Fly.io if it doesn't exist. You can do this using `fly apps create your-osam-app-name` or by running `fly launch`. `fly launch` will detect [`fly.toml`](./fly.toml) and prompt you to create the app based on its configuration. Ensure your [`fly.toml`](./fly.toml) has the correct GPU `[[vm]]` size, `[[mounts]]`, and `[http_service]` settings before creating the app.)*
 
-    Now, edit the `fly.toml` file. Ensure it looks similar to this, adjusted for your application name and desired settings:
+    Now, edit the [`fly.toml`](./fly.toml) file. Ensure it looks similar to this, adjusted for your application name and desired settings:
 
     ```toml
     # fly.toml
@@ -78,7 +78,7 @@ This method deploys the app persistently using the `fly.toml` configuration. It'
 
     # Define the VM size (GPU type)
     [[vm]]
-      size = 'l40s' # Specify the GPU VM size preset (e.g., a10, a100-40gb)
+      size = 'l40s' # Specify the GPU VM size preset (e.g., [a10, a100-40gb](https://fly.io/docs/gpus/gpu-quickstart/))
     ```
 
     *   **Crucially, change the `app` name to something unique.**
@@ -86,7 +86,7 @@ This method deploys the app persistently using the `fly.toml` configuration. It'
     *   Using `force_https = true` is recommended for production but commented out by default here.
 
 2.  **Deploy the App:**
-    Run the deployment command from the directory containing your `Dockerfile` and `fly.toml`:
+    Run the deployment command from the directory containing your [`Dockerfile`](./Dockerfile) and [`fly.toml`](./fly.toml):
     ```bash
     fly deploy
     ```
@@ -103,7 +103,7 @@ This method deploys the app persistently using the `fly.toml` configuration. It'
         echo "App available at: https://${APP_HOSTNAME}"
         ```
     *   **Example Python Request:**
-        See the `send_request_example.py` file for a complete example of how to send requests to the API using Python. You'll need to update the `API_ENDPOINT` to point to your Fly.io app URL (`https://<your-app-name>.fly.dev`).
+        See the [`send_request_example.py`](./send_request_example.py) file for a complete example of how to send requests to the API using Python. You'll need to update the `API_ENDPOINT` to point to your Fly.io app URL (`https://<your-app-name>.fly.dev`).
 
     *   **Using `fly ssh console` (for debugging):**
         You can SSH into the running machine for debugging:
@@ -125,14 +125,14 @@ This method deploys the app persistently using the `fly.toml` configuration. It'
 
 This deployment now includes a simple API key authentication mechanism to protect the `/api/generate` endpoint.
 
-The `main.py` script acts as a wrapper around the original `osam._server:app`. It requires an API key to be sent in the `X-API-Key` header for all incoming requests.
+The [`main.py`](./main.py) script acts as a wrapper around the original `osam._server:app`. It requires an API key to be sent in the `X-API-Key` header for all incoming requests.
 
 ### Setting the API Key
 
 How you set the required `API_KEY` depends on your environment:
 
 *   **Fly.io Deployment:**
-    Use the `fly secrets set` command. This is the **recommended method for production**. Secrets set via `fly secrets` take precedence over environment variables defined elsewhere (like `.env`).
+    Use the `fly secrets set` command. This is the **recommended method for production**. Secrets set via `fly secrets` take precedence over environment variables defined elsewhere (like [`.env`](./.env)).
     ```bash
     fly secrets set API_KEY=YOUR_SUPER_SECRET_KEY -a your-osam-app-name
     ```
@@ -140,40 +140,40 @@ How you set the required `API_KEY` depends on your environment:
 
 *   **Local Development (outside Fly.io):**
 
-    **Design Decision:** We do **not** copy the `.env` file directly into the Docker image during the build process (`Dockerfile` has no `COPY .env ...`). Baking secrets like API keys directly into images is insecure, as the image might be shared or stored in registries where the secrets could be exposed.
+    **Design Decision:** We do **not** copy the [`.env`](./.env) file directly into the Docker image during the build process ([`Dockerfile`](./Dockerfile) has no `COPY .env ...`). Embedding secrets like API keys directly into container images is insecure, as the image might be shared or stored in registries where the secrets could be exposed.
 
     Instead, we use standard Docker methods to inject these settings when running the container locally:
 
-    1.  **Create/Update `.env` file:** If it doesn't exist, copy the example: `cp .env.example .env`. Edit the `.env` file to set your desired `API_KEY` and optionally `APP_ENV=development`.
+    1.  **Create/Update [`.env`](./.env) file:** If it doesn't exist, copy the example: `cp .env.example .env`. Edit the [`.env`](./.env) file to set your desired `API_KEY` and optionally `APP_ENV=development`.
         ```dotenv
         # .env file contents
         API_KEY=your_local_key_here
         APP_ENV=development
         ```
-    2.  **Important:** Ensure `.env` is listed in your `.gitignore` file to prevent accidentally committing secrets.
-    3.  **Run the container with `--env-file`:** When you run the container locally using `docker run`, use the `--env-file` flag to load the variables from your `.env` file directly into the container's environment:
+    2.  **Important:** Ensure [`.env`](./.env) is listed in your [`.gitignore`](./.gitignore) file to prevent accidentally committing secrets.
+    3.  **Run the container with `--env-file`:** When you run the container locally using `docker run`, use the `--env-file` flag to load the variables from your [`.env`](./.env) file directly into the container's environment:
         ```bash
         # Assuming you have built the image (e.g., docker build -t my-osam-app .)
         docker run --rm -p 11368:11368 --env-file ./.env my-osam-app
         ```
-        The `main.py` script within the container will then read these environment variables using `os.environ.get()`. 
+        The [`main.py`](./main.py) script within the container will then read these environment variables using `os.environ.get()`. 
 
-        **Role of `load_dotenv()` in `main.py`:** The `load_dotenv()` call present in `main.py` is primarily designed to facilitate running the script *directly* on your host machine (e.g., for quick tests via `python main.py`). In that scenario, it *will* load variables from a `.env` file in the same directory. However, when running inside a Docker container using the `--env-file` method described above, the variables are already injected into the environment *before* the Python script starts, making the `load_dotenv()` call less critical (though harmless).
+        **Role of `load_dotenv()` in [`main.py`](./main.py):** The `load_dotenv()` call present in [`main.py`](./main.py) is primarily designed to facilitate running the script *directly* on your host machine (e.g., for quick tests via `python main.py`). In that scenario, it *will* load variables from a [`.env`](./.env) file in the same directory. However, when running inside a Docker container using the `--env-file` method described above, the variables are already injected into the environment *before* the Python script starts, making the `load_dotenv()` call less critical (though harmless).
 
 ### Development vs. Production Mode (`APP_ENV`)
 
-By default, the application runs in "production" mode, meaning the `API_KEY` **must** be set (either via `fly secrets` or `.env`), and requests without a valid `X-API-Key` header will be rejected.
+By default, the application runs in "production" mode, meaning the `API_KEY` **must** be set (either via `fly secrets set` command or manually through the Fly dashboard), and requests without a valid `X-API-Key` header will be rejected with a 401 Unauthorized response.
 
 For local development, you can optionally set the `APP_ENV` environment variable to `development`:
 
-*   Add `APP_ENV=development` to your `.env` file.
+*   Add `APP_ENV=development` to your [`.env`](./.env) file.
 *   Or set it when running the container: `docker run -e APP_ENV=development ...`
 
 In `development` mode, if the `API_KEY` is *not* set, authentication will be bypassed, and a warning will be printed to the console. This allows easier testing without needing a key configured, but **should not be used in production.**
 
 ### Client Usage
 
-# See `send_request_example.py` for a complete working example
+See [`send_request_example.py`](./send_request_example.py) for a complete working example
 
 
 Clients interacting with the deployed service must include the API key in the `X-API-Key` header:
